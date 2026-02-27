@@ -6,7 +6,6 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const db = new Database(path.join(__dirname, 'notes.db'));
 
-// Create table
 db.exec(`
   CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,42 +14,16 @@ db.exec(`
   )
 `);
 
-// Seed notes if empty
-const count = db.prepare('SELECT COUNT(*) as c FROM notes').get();
-if (count.c === 0) {
-  const seeds = [
-    "i haven't called my mom back in three weeks and every day feels heavier.",
-    "i'm pretending i'm okay with being alone. i'm not.",
-    "i laughed today and it surprised me.",
-    "i keep starting over. i don't know if that makes me resilient or just tired.",
-    "i miss someone who is still alive.",
-    "i'm scared the best part of my life is already behind me.",
-    "today i let myself cry in the car. it helped.",
-    "i told a stranger their dog was beautiful and meant it completely.",
-    "i don't know who i am without the version of me people expect.",
-    "i made something today. it wasn't good. i made it anyway.",
-    "i'm still carrying something from five years ago. i don't know how to put it down.",
-    "i wish someone would ask how i actually am.",
-    "i'm proud of something small that nobody noticed.",
-    "i think i'm finally becoming who i was supposed to be.",
-    "i said yes when i meant no. again.",
-  ];
-  const stmt = db.prepare('INSERT INTO notes (content, ts) VALUES (?, ?)');
-  seeds.forEach(c => stmt.run(c, Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)));
-}
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rate limit
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 app.use('/api/', limiter);
 
-// Profanity filter
 const BAD = ['fuck','shit','bitch','asshole','cunt','dick','nigger','faggot'];
 function dirty(t) { return BAD.some(w => new RegExp(`\\b${w}\\b`, 'i').test(t)); }
 
-// POST — save a note
+// POST — save a real note
 app.post('/api/notes', (req, res) => {
   const { content } = req.body;
   if (!content || typeof content !== 'string') return res.status(400).json({ error: 'empty note.' });
@@ -73,6 +46,36 @@ app.get('/api/notes/random', (req, res) => {
   let h = d.getHours(), m = d.getMinutes().toString().padStart(2,'0');
   const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12;
   res.json({ id: note.id, content: note.content, time: `${h}:${m} ${ap}`, total });
+});
+
+// GET — see ALL notes (so you can read what people wrote)
+app.get('/api/notes/all', (req, res) => {
+  const notes = db.prepare('SELECT * FROM notes ORDER BY ts DESC').all();
+  res.json({ total: notes.length, notes });
+});
+
+// GET — clear seed notes (run this once to remove dummy messages)
+app.get('/api/clearseed', (req, res) => {
+  const seeds = [
+    "i haven't called my mom back in three weeks and every day feels heavier.",
+    "i'm pretending i'm okay with being alone. i'm not.",
+    "i laughed today and it surprised me.",
+    "i keep starting over. i don't know if that makes me resilient or just tired.",
+    "i miss someone who is still alive.",
+    "i'm scared the best part of my life is already behind me.",
+    "today i let myself cry in the car. it helped.",
+    "i told a stranger their dog was beautiful and meant it completely.",
+    "i don't know who i am without the version of me people expect.",
+    "i made something today. it wasn't good. i made it anyway.",
+    "i'm still carrying something from five years ago. i don't know how to put it down.",
+    "i wish someone would ask how i actually am.",
+    "i'm proud of something small that nobody noticed.",
+    "i think i'm finally becoming who i was supposed to be.",
+    "i said yes when i meant no. again."
+  ];
+  seeds.forEach(s => db.prepare('DELETE FROM notes WHERE content = ?').run(s));
+  const remaining = db.prepare('SELECT COUNT(*) as c FROM notes').get().c;
+  res.json({ ok: true, message: 'seed notes cleared!', real_notes_remaining: remaining });
 });
 
 const PORT = process.env.PORT || 3000;
