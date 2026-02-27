@@ -1,18 +1,28 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
-const db = new Database(path.join(__dirname, 'notes.db'));
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    content TEXT NOT NULL,
-    ts INTEGER NOT NULL
-  )
-`);
+// Use Railway's PostgreSQL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+// Create table if it doesn't exist
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id SERIAL PRIMARY KEY,
+      content TEXT NOT NULL,
+      ts BIGINT NOT NULL
+    )
+  `);
+  console.log('database ready');
+}
+initDB();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -24,59 +34,45 @@ const BAD = ['fuck','shit','bitch','asshole','cunt','dick','nigger','faggot'];
 function dirty(t) { return BAD.some(w => new RegExp(`\\b${w}\\b`, 'i').test(t)); }
 
 // POST — save a real note
-app.post('/api/notes', (req, res) => {
+app.post('/api/notes', async (req, res) => {
   const { content } = req.body;
   if (!content || typeof content !== 'string') return res.status(400).json({ error: 'empty note.' });
   const t = content.trim();
   if (!t.length) return res.status(400).json({ error: 'note cannot be empty.' });
   if (t.length > 150) return res.status(400).json({ error: 'too long. 150 chars max.' });
   if (dirty(t)) return res.status(400).json({ error: 'please keep it gentle.' });
-  db.prepare('INSERT INTO notes (content, ts) VALUES (?, ?)').run(t, Date.now());
+  await pool.query('INSERT INTO notes (content, ts) VALUES ($1, $2)', [t, Date.now()]);
   res.json({ ok: true });
 });
 
 // GET — random note
-app.get('/api/notes/random', (req, res) => {
+app.get('/api/notes/random', async (req, res) => {
   const exclude = parseInt(req.query.exclude) || -1;
-  let note = db.prepare('SELECT * FROM notes WHERE id != ? ORDER BY RANDOM() LIMIT 1').get(exclude);
-  if (!note) note = db.prepare('SELECT * FROM notes ORDER BY RANDOM() LIMIT 1').get();
+  const result = await pool.query(
+    'SELECT * FROM notes WHERE id != $1 ORDER BY RANDOM() LIMIT 1', [exclude]
+  );
+  let note = result.rows[0];
+  if (!note) {
+    const all = await pool.query('SELECT * FROM notes ORDER BY RANDOM() LIMIT 1');
+    note = all.rows[0];
+  }
   if (!note) return res.status(404).json({ error: 'no notes yet. be the first.' });
-  const total = db.prepare('SELECT COUNT(*) as c FROM notes').get().c;
-  const d = new Date(note.ts);
+  const total = (await pool.query('SELECT COUNT(*) as c FROM notes')).rows[0].c;
+  const d = new Date(parseInt(note.ts));
   let h = d.getHours(), m = d.getMinutes().toString().padStart(2,'0');
   const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12;
   res.json({ id: note.id, content: note.content, time: `${h}:${m} ${ap}`, total });
 });
 
-// GET — see ALL notes (so you can read what people wrote)
-app.get('/api/notes/all', (req, res) => {
-  const notes = db.prepare('SELECT * FROM notes ORDER BY ts DESC').all();
-  res.json({ total: notes.length, notes });
-});
-
-// GET — clear seed notes (run this once to remove dummy messages)
-app.get('/api/clearseed', (req, res) => {
-  const seeds = [
-    "i haven't called my mom back in three weeks and every day feels heavier.",
-    "i'm pretending i'm okay with being alone. i'm not.",
-    "i laughed today and it surprised me.",
-    "i keep starting over. i don't know if that makes me resilient or just tired.",
-    "i miss someone who is still alive.",
-    "i'm scared the best part of my life is already behind me.",
-    "today i let myself cry in the car. it helped.",
-    "i told a stranger their dog was beautiful and meant it completely.",
-    "i don't know who i am without the version of me people expect.",
-    "i made something today. it wasn't good. i made it anyway.",
-    "i'm still carrying something from five years ago. i don't know how to put it down.",
-    "i wish someone would ask how i actually am.",
-    "i'm proud of something small that nobody noticed.",
-    "i think i'm finally becoming who i was supposed to be.",
-    "i said yes when i meant no. again."
-  ];
-  seeds.forEach(s => db.prepare('DELETE FROM notes WHERE content = ?').run(s));
-  const remaining = db.prepare('SELECT COUNT(*) as c FROM notes').get().c;
-  res.json({ ok: true, message: 'seed notes cleared!', real_notes_remaining: remaining });
+// GET — see ALL notes
+app.get('/api/notes/all', async (req, res) => {
+  const result = await pool.query('SELECT * FROM notes ORDER BY ts DESC');
+  res.json({ total: result.rows.length, notes: result.rows });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`in my shoes — port ${PORT}`));
+
+
+
+   
