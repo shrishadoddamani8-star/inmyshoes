@@ -5,6 +5,9 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 
+// Fix for Railway proxy
+app.set('trust proxy', 1);
+
 const pool = new Pool({
   connectionString: 'postgresql://postgres:ejOKPZcytJSuQrmBQwFGbrtjMNwHFvan@caboose.proxy.rlwy.net:31886/railway',
   ssl: { rejectUnauthorized: false }
