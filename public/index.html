@@ -517,62 +517,25 @@ else{
   }
 }
 
-// STORAGE
-const SEEDS=[
-  "i haven't called my mom back in three weeks and every day feels heavier.",
-  "i'm pretending i'm okay with being alone. i'm not.",
-  "i laughed today and it surprised me.",
-  "i keep starting over. i don't know if that makes me resilient or just tired.",
-  "i miss someone who is still alive.",
-  "i'm scared the best part of my life is already behind me.",
-  "today i let myself cry in the car. it helped.",
-  "i told a stranger their dog was beautiful and meant it completely.",
-  "i don't know who i am without the version of me people expect.",
-  "i made something today. it wasn't good. i made it anyway.",
-  "i'm still carrying something from five years ago. i don't know how to put it down.",
-  "i wish someone would ask how i actually am.",
-  "i'm proud of something small that nobody noticed.",
-  "i think i'm finally becoming who i was supposed to be.",
-  "i said yes when i meant no. again.",
-];
-let memNotes=null;
-
-function fmtTime(ts){
-  const d=new Date(ts);let h=d.getHours(),m=d.getMinutes().toString().padStart(2,"0");
-  const ap=h>=12?"pm":"am";h=h%12||12;return h+":"+m+" "+ap;
-}
-
-async function initStorage(){
-  try{
-    const ex=await window.storage.get("imsnotes-v1",true);
-    if(!ex){
-      const seeds=SEEDS.map((c,i)=>({id:Date.now()-(SEEDS.length-i)*3600000,content:c,ts:Date.now()-Math.floor(Math.random()*7*864e5)}));
-      await window.storage.set("imsnotes-v1",JSON.stringify(seeds),true);
-    }
-  }catch(e){
-    if(!memNotes)memNotes=SEEDS.map((c,i)=>({id:i,content:c,ts:Date.now()-Math.floor(Math.random()*7*864e5)}));
-  }
-}
-
-async function getAllNotes(){
-  try{const r=await window.storage.get("imsnotes-v1",true);if(!r)return[...memNotes||[]];return JSON.parse(r.value);}
-  catch(e){return[...memNotes||[]];}
-}
-
+// REAL API
 async function saveNote(content){
-  const note={id:Date.now(),content,ts:Date.now()};
-  try{const notes=await getAllNotes();notes.push(note);await window.storage.set("imsnotes-v1",JSON.stringify(notes),true);}
-  catch(e){if(!memNotes)memNotes=SEEDS.map((c,i)=>({id:i,content:c,ts:Date.now()-i*1000}));memNotes.push(note);}
-  return note;
+  const res = await fetch("/api/notes", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({content})
+  });
+  const data = await res.json();
+  if(!res.ok) throw new Error(data.error || "error saving note");
+  return data;
 }
 
 async function getRandomNote(exId){
-  const notes=await getAllNotes();if(!notes.length)return null;
-  let pool=notes.filter(n=>n.id!==exId);if(!pool.length)pool=notes;
-  return pool[Math.floor(Math.random()*pool.length)];
+  const res = await fetch("/api/notes/random?exclude=" + (exId || ""));
+  const data = await res.json();
+  if(res.status === 404) return null;
+  if(!res.ok) throw new Error(data.error || "error getting note");
+  return data;
 }
-
-initStorage();
 
 // WINDOWS
 const WINDOWS=[[1,1,14,6],[16,1,10,5],[28,0,8,5],[38,0,9,5],[0,7,14,8],[15,6,14,8],[30,6,10,8],[41,6,8,7],[0,15,22,8],[23,14,14,9],[38,14,11,8],[0,24,11,8],[12,23,12,9],[25,23,13,8],[39,23,10,8],[0,32,11,9],[12,32,13,9],[26,32,12,8],[39,32,10,8],[0,42,11,8],[12,41,13,9],[26,41,12,9],[39,41,10,8],[0,50,22,9],[23,50,14,9],[38,50,11,8],[0,60,11,8],[12,59,13,9],[26,59,12,9],[39,59,10,8],[0,68,11,9],[12,68,13,9],[26,68,12,8],[39,68,10,8],[0,77,22,9],[23,77,14,9],[38,77,11,8],[0,86,11,8],[12,86,13,9],[26,86,12,8],[39,86,10,8],[0,95,16,5],[17,95,13,5],[31,94,10,5],[42,94,7,5],[51,2,11,7],[63,1,14,8],[78,2,10,7],[89,1,10,7],[51,10,11,8],[63,9,14,9],[78,9,10,9],[89,9,10,8],[51,19,11,8],[63,18,36,9],[89,18,10,9],[51,28,11,9],[63,27,14,9],[78,27,10,8],[89,27,10,9],[51,37,48,9],[51,47,11,8],[63,47,14,9],[78,47,10,8],[89,47,10,8],[51,56,11,9],[63,55,14,10],[78,55,10,9],[89,55,10,9],[51,65,11,8],[63,65,36,9],[89,65,10,8],[51,74,11,9],[63,74,14,9],[78,74,10,8],[89,74,10,8],[51,83,11,8],[63,83,36,9],[89,83,10,8],[51,92,11,6],[63,92,14,6],[78,92,10,6],[89,92,10,6]];
