@@ -6,8 +6,8 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 
 const pool = new Pool({
-  connectionString: 'postgresql://postgres:omDbnSzxxUgMFlBouJuHHNSmwOyoWOJN@postgres.railway.internal:5432/railway',
-  ssl: false
+  connectionString: 'postgresql://postgres:ejOKPZcytJSuQrmBQwFGbrtjMNwHFvan@caboose.proxy.rlwy.net:31886/railway',
+  ssl: { rejectUnauthorized: false }
 });
 
 async function initDB() {
@@ -21,7 +21,7 @@ async function initDB() {
     `);
     console.log('database ready');
   } catch(e) {
-    console.error('db error:', e.message);
+    console.error('db init error:', e.message);
   }
 }
 initDB();
@@ -46,7 +46,8 @@ app.post('/api/notes', async (req, res) => {
     await pool.query('INSERT INTO notes (content, ts) VALUES ($1, $2)', [t, Date.now()]);
     res.json({ ok: true });
   } catch(e) {
-    res.status(500).json({ error: 'could not save note.' });
+    console.error('save error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -66,7 +67,8 @@ app.get('/api/notes/random', async (req, res) => {
     const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12;
     res.json({ id: note.id, content: note.content, time: `${h}:${m} ${ap}`, total });
   } catch(e) {
-    res.status(500).json({ error: 'could not get note.' });
+    console.error('random error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -75,7 +77,8 @@ app.get('/api/notes/all', async (req, res) => {
     const result = await pool.query('SELECT * FROM notes ORDER BY ts DESC');
     res.json({ total: result.rows.length, notes: result.rows });
   } catch(e) {
-    res.status(500).json({ error: 'could not get notes.' });
+    console.error('all error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
